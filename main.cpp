@@ -10,10 +10,9 @@ using namespace std;
 
 // enumerations
 enum StartMenu { Start, Exit };
-enum PauseMenu { Resume, Quit };
+enum WallElement { TL, HZ, TR, VT, BR, BL, EMPTY };
 enum Direction { Left, Up, Right, Down };
 enum Colors { Yellow = 1, White, Blue };
-enum WallElement { TL, HZ, TR, VT, BR, BL, JL, JU, JR, JD, EMPTY };
 
 // structures
 struct Position {
@@ -53,9 +52,8 @@ int term_width, term_height, menu_width, menu_height;
 const string pacmanStates[8] = { "\u0254", "u", "c", "n",
                                  "\u0186", "U", "C", "\u2229" };
 
-const string wEle[] = { "\u250c", "\u2500", "\u2510", "\u2502",
-                        "\u2518", "\u2514", "\u2524", "\u2534",
-                        "\u251c", "\u252c", " " };
+const string WallEle[] = { "\u250c", "\u2500", "\u2510", "\u2502",
+                           "\u2518", "\u2514", " " };
 
 int main() {
   initCurses();
@@ -293,7 +291,7 @@ void pacmanInput(Direction &d, const int key) {
 void printWallElement(WINDOW *win, WallElement WALL, const int n) {
   wattron(win, COLOR_PAIR(Blue));
   for (int i = 0; i < n; i++)
-    wprintw(win, "%s", wEle[WALL].c_str());
+    wprintw(win, "%s", WallEle[WALL].c_str());
   wattroff(win, COLOR_PAIR(Blue));
 }
 
