@@ -10,7 +10,7 @@ using namespace std;
 
 // enumerations
 enum StartMenu { Start, Exit };
-enum WallElement { TL, HZ, TR, VT, BR, BL, EMPTY };
+enum WallElement { TL, HZ, TR, VT, BR, BL };
 enum Direction { Left, Up, Right, Down };
 enum Colors { Yellow = 1, White, Blue };
 
@@ -38,6 +38,8 @@ void initCurses();
 void initColors();
 void printPacman(WINDOW *, Pacman);
 void printFood(WINDOW *, const int = 1, Colors = White);
+void printSpace(WINDOW *, const int = 1);
+bool detectWall(WINDOW *, Position);
 void tickPacman(WINDOW *, Pacman &);
 void menuInput(short &, const int, const int);
 StartMenu displayStartMenu();
@@ -49,11 +51,11 @@ void startGame();
 // global variables
 // term is short for terminal
 int term_width, term_height, menu_width, menu_height;
-const string pacmanStates[8] = { "\u0254", "u", "c", "n",
-                                 "\u0186", "U", "C", "\u2229" };
+const wchar_t pacmanStates[8] = { L'\u0254', L'u', L'c', L'n',
+                                  L'\u0186', L'U', L'C', L'\u2229' };
 
-const string WallEle[] = { "\u250c", "\u2500", "\u2510", "\u2502",
-                           "\u2518", "\u2514", " " };
+const wchar_t WallEle[7] = { L'\u250c', L'\u2500', L'\u2510',
+                             L'\u2502', L'\u2518', L'\u2514' };
 
 int main() {
   initCurses();
@@ -120,8 +122,8 @@ void initColors() {
 
 void printPacman(WINDOW *win, Pacman pac) {
   wattron(win, COLOR_PAIR(Yellow));
-  mvwprintw(win, pac.pos.y, pac.pos.x, "%s",
-            pacmanStates[pac.dir + 4 * pac.MouthOpen].c_str());
+  mvwprintw(win, pac.pos.y, pac.pos.x, "%lc",
+            pacmanStates[pac.dir + 4 * pac.MouthOpen]);
   wattroff(win, COLOR_PAIR(Yellow));
 }
 
@@ -130,6 +132,23 @@ void printFood(WINDOW *win, const int NumFood, Colors color) {
   for (int i = 0; i < NumFood; i++)
     wprintw(win, "\u2022");
   wattroff(win, COLOR_PAIR(color));
+}
+
+void printSpace(WINDOW *win, const int n) {
+  for (int i = 0; i < n; i++)
+    wprintw(win, " ");
+}
+
+bool detectWall(WINDOW *win, const Position p) {
+  // store wide character at position p in ch_at_p
+  cchar_t ch_at_p;
+  mvwin_wch(win, p.y, p.x, &ch_at_p);
+  // calculate the size of WallEle array
+  const int SIZE = sizeof(WallEle) / sizeof(WallEle[0]);
+  for (int i = 0; i < SIZE; i++)
+    if (ch_at_p.chars[0] == WallEle[i])
+      return true;
+  return false;
 }
 
 void tickPacman(WINDOW *win, Pacman &p) {
@@ -147,16 +166,23 @@ void tickPacman(WINDOW *win, Pacman &p) {
     switch (p.dir) {
     case Left:
       --p.pos.x;
+      if (detectWall(win, p.pos))
+        ++p.pos.x;
       break;
     case Up:
       --p.pos.y;
+      if (detectWall(win, p.pos))
+        ++p.pos.y;
       break;
     case Right:
       ++p.pos.x;
+      if (detectWall(win, p.pos))
+        --p.pos.x;
       break;
     case Down:
       ++p.pos.y;
-      break;
+      if (detectWall(win, p.pos))
+        --p.pos.y;
     }
   }
 
@@ -242,8 +268,7 @@ StartMenu displayStartMenu() {
 
     // start pacman at initial position again after eating all food
     if (pac.pos.x > pacStart.x + foodNum) {
-      mvwprintw(menu_scr, pac.pos.y, pac.pos.x, " ");
-      pac.pos.x = pacStart.x;
+      pac.dir = Left;
     }
 
     // get input
@@ -286,12 +311,12 @@ void pacmanInput(Direction &d, const int key) {
   }
 }
 
-// prints wele[WALL] at current cursor position, n number of times. in case no n
-// is provided, it prints only once
+// prints wele[WALL] at current cursor position, n number of times. in case no
+// n is provided, it prints only once
 void printWallElement(WINDOW *win, WallElement WALL, const int n) {
   wattron(win, COLOR_PAIR(Blue));
   for (int i = 0; i < n; i++)
-    wprintw(win, "%s", WallEle[WALL].c_str());
+    wprintw(win, "%lc", WallEle[WALL]);
   wattroff(win, COLOR_PAIR(Blue));
 }
 
@@ -346,21 +371,21 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, VT, 2);
   printFood(win, 1, Yellow);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 2);
+  printSpace(win, 2);
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 3);
+  printSpace(win, 3);
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 3);
+  printSpace(win, 3);
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 2);
+  printSpace(win, 2);
   printWallElement(win, VT);
   printFood(win, 1, Yellow);
   printWallElement(win, VT, 2);
@@ -462,9 +487,9 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, BL);
   printWallElement(win, HZ, 2);
   printWallElement(win, TR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, TL);
   printWallElement(win, HZ, 2);
   printWallElement(win, BR);
@@ -485,10 +510,10 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, TL);
   printWallElement(win, HZ, 2);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, HZ, 2);
   printWallElement(win, TR);
@@ -500,15 +525,15 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, BR);
 
   // row 12
-  printWallElement(win, EMPTY, 5);
+  printSpace(win, 5);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY, 10);
+  printSpace(win, 10);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY, 5);
+  printSpace(win, 5);
 
   // row 13
   printWallElement(win, HZ, 5);
@@ -516,13 +541,13 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, TL);
   printWallElement(win, HZ, 2);
-  printWallElement(win, EMPTY, 2);
+  printSpace(win, 2);
   printWallElement(win, HZ, 2);
   printWallElement(win, TR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT);
@@ -535,11 +560,11 @@ void buildWalls(WINDOW *win) {
   printFood(win);
   printWallElement(win, BL);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 6);
+  printSpace(win, 6);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, BR);
   printFood(win);
@@ -547,15 +572,15 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, HZ, 6);
 
   // row 15
-  printWallElement(win, EMPTY, 7);
+  printSpace(win, 7);
   printFood(win);
-  printWallElement(win, EMPTY, 3);
+  printSpace(win, 3);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 6);
+  printSpace(win, 6);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 3);
+  printSpace(win, 3);
   printFood(win);
-  printWallElement(win, EMPTY, 7);
+  printSpace(win, 7);
 
   // row 16
   printWallElement(win, HZ, 6);
@@ -563,11 +588,11 @@ void buildWalls(WINDOW *win) {
   printFood(win);
   printWallElement(win, TL);
   printWallElement(win, TR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY, 6);
+  printSpace(win, 6);
   printWallElement(win, VT);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, TL);
   printWallElement(win, TR);
   printFood(win);
@@ -580,11 +605,11 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, HZ, 6);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT);
@@ -592,15 +617,15 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, HZ, 5);
 
   // row 18
-  printWallElement(win, EMPTY, 5);
+  printSpace(win, 5);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY, 10);
+  printSpace(win, 10);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY, 5);
+  printSpace(win, 5);
 
   // row 19
   printWallElement(win, TL);
@@ -609,11 +634,11 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, VT);
   printFood(win);
   printWallElement(win, VT, 2);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, TL);
   printWallElement(win, HZ, 6);
   printWallElement(win, TR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, VT, 2);
   printFood(win);
   printWallElement(win, VT);
@@ -629,14 +654,14 @@ void buildWalls(WINDOW *win) {
   printFood(win);
   printWallElement(win, BL);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, HZ, 2);
   printWallElement(win, TR);
   printWallElement(win, TL);
   printWallElement(win, HZ, 2);
   printWallElement(win, BR);
-  printWallElement(win, EMPTY);
+  printSpace(win);
   printWallElement(win, BL);
   printWallElement(win, BR);
   printFood(win);
@@ -840,14 +865,14 @@ void startGame() {
   refresh();
 
   buildWalls(game_scr);
-  const Position pacmanStart = { 5, 1 };
+  const Position pacmanStart = { 3, 2 };
   Pacman pac(pacmanStart);
 
   wtimeout(game_scr, 1000 / (10 * pac.speed));
   int key;
   do {
     // print and update pacman every tick
-    // tickPacman(game_scr, pac);
+    tickPacman(game_scr, pac);
 
     key = wgetch(game_scr);
     pacmanInput(pac.dir, key);
