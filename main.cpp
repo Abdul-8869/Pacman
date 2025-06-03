@@ -25,12 +25,16 @@ struct Pacman {
   Direction dir;
   const unsigned int speed;
   bool MouthOpen;
+  unsigned int score;
+  unsigned short lives;
   unsigned short tick;
 
   // constructors
-  Pacman() : MouthOpen(false), dir(Right), speed(4), tick(0) {}
+  Pacman()
+      : MouthOpen(false), dir(Right), speed(4), tick(0), score(0), lives(5) {}
   Pacman(Position p)
-      : pos(p), MouthOpen(false), dir(Right), speed(4), tick(0) {}
+      : pos(p), MouthOpen(false), dir(Right), speed(4), tick(0), score(0),
+        lives(5) {}
 };
 
 // function prototypes
@@ -40,6 +44,8 @@ void printPacman(WINDOW *, Pacman);
 void printFood(WINDOW *, const int = 1, Colors = White);
 void printSpace(WINDOW *, const int = 1);
 bool detectWall(WINDOW *, Position);
+void incScore(WINDOW *, Position, unsigned int &);
+void printScore(WINDOW *, const unsigned int);
 void tickPacman(WINDOW *, Pacman &);
 void menuInput(short &, const int, const int);
 StartMenu displayStartMenu();
@@ -51,6 +57,7 @@ void startGame();
 // global variables
 // term is short for terminal
 int term_width, term_height, menu_width, menu_height;
+bool gameStarted = false;
 const wchar_t pacmanStates[8] = { L'\u0254', L'u', L'c', L'n',
                                   L'\u0186', L'U', L'C', L'\u2229' };
 
@@ -65,6 +72,7 @@ int main() {
     return 0;
   }
 
+  gameStarted = true;
   startGame();
   endwin();
   return 0;
@@ -151,6 +159,18 @@ bool detectWall(WINDOW *win, const Position p) {
   return false;
 }
 
+void incScore(WINDOW *win, Position p, unsigned int &score) {
+  // store wide character at position p in ch_at_p
+  cchar_t ch_at_p;
+  mvwin_wch(win, p.y, p.x, &ch_at_p);
+  if (ch_at_p.chars[0] == L'\u2022')
+    score += 10;
+}
+void printScore(WINDOW *win, const unsigned int score) {
+  wmove(win, GAME_HEIGHT - 1, 0);
+  wprintw(win, "Score: %d", score);
+}
+
 void tickPacman(WINDOW *win, Pacman &p) {
   // invert mouth every 5 ticks
   if (++p.tick % 5 == 0)
@@ -184,6 +204,20 @@ void tickPacman(WINDOW *win, Pacman &p) {
       if (detectWall(win, p.pos))
         --p.pos.y;
     }
+  }
+
+  if (p.pos.x < 0 && p.pos.y == 15) {
+    mvwprintw(win, 15, 0, " ");
+    p.pos.x = GAME_WIDTH - 1;
+  } else if (p.pos.x > GAME_WIDTH - 1 && p.pos.y == 15) {
+    mvwprintw(win, 15, GAME_WIDTH - 1, " ");
+    p.pos.x = 0;
+  }
+
+  // update score if food is at the updated position
+  if (gameStarted) {
+    incScore(win, p.pos, p.score);
+    printScore(win, p.score);
   }
 
   // reset tick back to 0 to avoid variable overflow
@@ -267,9 +301,10 @@ StartMenu displayStartMenu() {
     tickPacman(menu_scr, pac);
 
     // start pacman at initial position again after eating all food
-    if (pac.pos.x > pacStart.x + foodNum) {
+    if (pac.pos.x > pacStart.x + foodNum)
       pac.dir = Left;
-    }
+    else if (pac.pos.x == pacStart.x)
+      pac.dir = Right;
 
     // get input
     keyPressed = wgetch(menu_scr);
