@@ -4,6 +4,7 @@
 #include <iostream>
 #define GAME_HEIGHT 35
 #define GAME_WIDTH 30
+#define TIMEOUT 20
 #define ESC 27
 #define ENTER 10
 
@@ -26,16 +27,10 @@ struct Pacman {
   Direction dir;
   const unsigned int speed;
   bool MouthOpen;
-  unsigned int score;
-  unsigned short lives;
-  unsigned short tick;
 
   // constructors
-  Pacman()
-      : MouthOpen(false), dir(Right), speed(4), tick(0), score(0), lives(5) {}
-  Pacman(Position p)
-      : pos(p), MouthOpen(false), dir(Right), speed(4), tick(0), score(0),
-        lives(5) {}
+  Pacman() : MouthOpen(false), dir(Right), speed(10) {}
+  Pacman(Position p) : pos(p), MouthOpen(false), dir(Right), speed(10) {}
 };
 
 struct Enemy {
@@ -43,14 +38,15 @@ struct Enemy {
   Position pos;
   Direction dir;
   unsigned int speed;
-  unsigned short tick;
   Colors color;
-  bool is_eaten;
+  bool isEaten;  // turns to true when pacman eats enemy
+  bool hasEaten; // turns to true when enemy eats food
 
   // constructors
-  Enemy() : dir(Up), speed(1), is_eaten(false) {}
+  Enemy() : dir(Up), speed(10), isEaten(false), hasEaten(false) {}
 
-  Enemy(Position p) : pos(p), dir(Up), speed(3), is_eaten(false) {}
+  Enemy(Position p)
+      : pos(p), dir(Up), speed(10), isEaten(false), hasEaten(false) {}
 };
 
 // function prototypes
@@ -61,13 +57,18 @@ void printEnemy(WINDOW *, Enemy);
 void printFood(WINDOW *, const int = 1, Colors = White);
 void printSpace(WINDOW *, const int = 1);
 bool detectWall(WINDOW *, Position);
-void incScore(WINDOW *, Position, unsigned int &);
-void printScore(WINDOW *, const unsigned int);
+bool detectFood(WINDOW *, const Position);
+bool detectEnemy(WINDOW *, const Position);
+void incScore(WINDOW *, Position);
+void printScore(WINDOW *);
+void printLives(WINDOW *, const unsigned int);
+void updatePosition(const Direction, Position &);
 void tickPacman(WINDOW *, Pacman &);
+void tickEnemy(WINDOW *, Enemy &);
 void menuInput(short &, const int, const int);
 StartMenu displayStartMenu();
 void printWallElement(WINDOW *, WallElement, const int = 1);
-void buildWalls(WINDOW *);
+void buildMap(WINDOW *);
 void pacmanInput(Direction &, const int);
 void startGame();
 
@@ -80,6 +81,10 @@ const wchar_t pacmanStates[8] = { L'\u0254', L'u', L'c', L'n',
 
 const wchar_t WallEle[7] = { L'\u250c', L'\u2500', L'\u2510',
                              L'\u2502', L'\u2518', L'\u2514' };
+unsigned short tick = 0;
+unsigned int score = 0;
+bool pacmanDead = false;
+unsigned short lives = 3;
 
 int main() {
   initCurses();
@@ -93,6 +98,7 @@ int main() {
   gameStarted = true;
   startGame();
   endwin();
+  cout << "Score: " << score << endl;
   return 0;
 }
 
@@ -159,7 +165,7 @@ void printPacman(WINDOW *win, Pacman pac) {
 
 void printEnemy(WINDOW *win, Enemy enem) {
   wattron(win, COLOR_PAIR(enem.color));
-  mvwprintw(win, enem.pos.y, enem.pos.x, "%lc", enem.shape);
+  mvwprintw(win, enem.pos.y, enem.pos.x, "%c", enem.shape);
   wattroff(win, COLOR_PAIR(enem.color));
 }
 
@@ -187,53 +193,81 @@ bool detectWall(WINDOW *win, const Position p) {
   return false;
 }
 
-void incScore(WINDOW *win, Position p, unsigned int &score) {
-  // store wide character at position p in ch_at_p
+bool detectFood(WINDOW *win, const Position p) {
   cchar_t ch_at_p;
   mvwin_wch(win, p.y, p.x, &ch_at_p);
   if (ch_at_p.chars[0] == L'\u2022')
+    return true;
+  else
+    return false;
+}
+
+bool detectEnemy(WINDOW *win, const Position p) {
+  cchar_t ch_at_p;
+  mvwin_wch(win, p.y, p.x, &ch_at_p);
+  if (ch_at_p.chars[0] == '@')
+    return true;
+  else
+    return false;
+}
+
+void incScore(WINDOW *win, Position p) {
+  if (detectFood(win, p))
     score += 10;
 }
-void printScore(WINDOW *win, const unsigned int score) {
+void printScore(WINDOW *win) {
   wmove(win, GAME_HEIGHT - 1, 0);
   wprintw(win, "Score: %d", score);
 }
 
+void printLives(WINDOW *win, const unsigned int lives) {
+  wmove(win, GAME_HEIGHT - 1, GAME_WIDTH - 9);
+  wprintw(win, "Lives: %d", lives);
+}
+
+void updatePosition(const Direction dir, Position &p) {
+  switch (dir) {
+  case Left:
+    --p.x;
+    break;
+  case Up:
+    --p.y;
+    break;
+  case Right:
+    ++p.x;
+    break;
+  case Down:
+    ++p.y;
+  }
+}
+
 void tickPacman(WINDOW *win, Pacman &p) {
   // invert mouth every 5 ticks
-  if (++p.tick % 5 == 0)
+  if (tick % 5 == 0)
     p.MouthOpen = !p.MouthOpen;
 
   // update position of pacman every 10 ticks
-  if (p.tick % 10 == 0) {
+  if (tick % p.speed == 0) {
+
+    // store old position
+    Position oldPos = p.pos;
 
     // remove pacman from previous position
     mvwprintw(win, p.pos.y, p.pos.x, " ");
 
-    // update position
-    switch (p.dir) {
-    case Left:
-      --p.pos.x;
-      if (detectWall(win, p.pos))
-        ++p.pos.x;
-      break;
-    case Up:
-      --p.pos.y;
-      if (detectWall(win, p.pos))
-        ++p.pos.y;
-      break;
-    case Right:
-      ++p.pos.x;
-      if (detectWall(win, p.pos))
-        --p.pos.x;
-      break;
-    case Down:
-      ++p.pos.y;
-      if (detectWall(win, p.pos))
-        --p.pos.y;
+    // update position and revert if there is a wall at the new position
+    updatePosition(p.dir, p.pos);
+    if (detectWall(win, p.pos))
+      p.pos = oldPos;
+    else if (detectEnemy(win, p.pos)) {
+      pacmanDead = true;
+      napms(1000);
+      lives--;
+      return;
     }
   }
 
+  // wrap pacman in the tunnel
   if (p.pos.x < 0 && p.pos.y == 15) {
     mvwprintw(win, 15, 0, " ");
     p.pos.x = GAME_WIDTH - 1;
@@ -241,58 +275,35 @@ void tickPacman(WINDOW *win, Pacman &p) {
     mvwprintw(win, 15, GAME_WIDTH - 1, " ");
     p.pos.x = 0;
   }
-
-  // update score if food is at the updated position
-  if (gameStarted) {
-    incScore(win, p.pos, p.score);
-    printScore(win, p.score);
-  }
-
-  // reset tick back to 0 to avoid variable overflow
-  if (p.tick == 60)
-    p.tick = 0;
+  incScore(win, p.pos);
 
   // draw pacman at its current position and refresh screen
   printPacman(win, p);
-  wrefresh(win);
 }
 void tickEnemy(WINDOW *win, Enemy &e) {
-  // Update enemy position based on their speed
-  if (++e.tick % e.speed == 0) {
-    // Remove enemy from previous position
-    mvwprintw(win, e.pos.y, e.pos.x, " ");
 
-    // Save current position in case move is invalid
-    Position oldPos = e.pos;
+  // update enemy position based on their speed
+  if (tick % e.speed == 0) {
 
-    // Randomly decide whether to change direction (1 in 4 chance)
-    if (rand() % 40 == 0) {
-      e.dir = static_cast<Direction>(rand() % 4); // Random new direction
-    }
+    // print food at current position if hasEaten is true, otherwise print space
+    wmove(win, e.pos.y, e.pos.x);
+    if (e.hasEaten) {
+      printFood(win);
+      e.hasEaten = false;
+    } else
+      wprintw(win, " ");
 
-    // Try to move in current direction
-    switch (e.dir) {
-    case Left:
-      e.pos.x--;
-      break;
-    case Up:
-      e.pos.y--;
-      break;
-    case Right:
-      e.pos.x++;
-      break;
-    case Down:
-      e.pos.y++;
-      break;
-    }
-
-    // If move hits wall, revert position and pick new random direction
-    if (detectWall(win, e.pos)) {
-      e.pos = oldPos;
+    const Position oldPos = e.pos;
+    updatePosition(e.dir, e.pos);
+    if (detectWall(win, e.pos) || detectEnemy(win, e.pos)) {
       e.dir = static_cast<Direction>(rand() % 4);
+      e.pos = oldPos;
     }
 
-    // Handle tunnel/wrap-around (same as pacman)
+    // if there is a food at the new position, then set hasEaten to true.
+    if (detectFood(win, e.pos))
+      e.hasEaten = true;
+    // handle tunnel/wrap-around
     if (e.pos.x < 0 && e.pos.y == 15) {
       mvwprintw(win, 15, 0, " ");
       e.pos.x = GAME_WIDTH - 1;
@@ -300,6 +311,9 @@ void tickEnemy(WINDOW *win, Enemy &e) {
       mvwprintw(win, 15, GAME_WIDTH - 1, " ");
       e.pos.x = 0;
     }
+
+    // print enemy
+    printEnemy(win, e);
   }
 }
 void menuInput(short &highlight, const int key, const int menuItems) {
@@ -342,8 +356,8 @@ StartMenu displayStartMenu() {
   // initialize pacman
   Pacman pac(pacStart);
 
-  // set wgetch timeout based on speed in characters per second
-  wtimeout(menu_scr, 1000 / (10 * pac.speed));
+  // set wgetch timeout to TIMEOUT milliseconds
+  wtimeout(menu_scr, TIMEOUT);
   box(menu_scr, 0, 0); // draw border
   // write Pacman in yellow at the top center of menu
   wattron(menu_scr, COLOR_PAIR(Yellow));
@@ -370,6 +384,7 @@ StartMenu displayStartMenu() {
     }
 
     // update pacman every tick
+    tick++;
     tickPacman(menu_scr, pac);
 
     // start pacman at initial position again after eating all food
@@ -393,27 +408,27 @@ StartMenu displayStartMenu() {
   return StartMenu(highlight);
 }
 
-void pacmanInput(Direction &d, const int key) {
+void pacmanInput(Direction &dir, const int key) {
   switch (key) {
   case KEY_LEFT:
   case static_cast<int>('a'):
   case static_cast<int>('A'):
-    d = Left;
+    dir = Left;
     break;
   case KEY_UP:
   case static_cast<int>('w'):
   case static_cast<int>('W'):
-    d = Up;
+    dir = Up;
     break;
   case KEY_RIGHT:
   case static_cast<int>('d'):
   case static_cast<int>('D'):
-    d = Right;
+    dir = Right;
     break;
   case KEY_DOWN:
   case static_cast<int>('s'):
   case static_cast<int>('S'):
-    d = Down;
+    dir = Down;
     break;
   }
 }
@@ -428,7 +443,7 @@ void printWallElement(WINDOW *win, WallElement WALL, const int n) {
 }
 
 // build all of the walls
-void buildWalls(WINDOW *win) {
+void buildMap(WINDOW *win) {
   // row 0
   printWallElement(win, TL);
   printWallElement(win, HZ, 28);
@@ -714,7 +729,9 @@ void buildWalls(WINDOW *win) {
   printWallElement(win, VT, 2);
   printSpace(win);
   printWallElement(win, BL);
-  printWallElement(win, HZ, 6);
+  printWallElement(win, HZ, 2);
+  printSpace(win, 2);
+  printWallElement(win, HZ, 2);
   printWallElement(win, BR);
   printSpace(win);
   printWallElement(win, VT, 2);
@@ -971,46 +988,64 @@ void startGame() {
   keypad(game_scr, true);
   refresh();
 
-  buildWalls(game_scr);
+  buildMap(game_scr);
   const Position pacmanStart = { 3, 2 };
   Pacman pac(pacmanStart);
 
   const Position initialPos[4] = {
     { 14, 14 }, // Enemy 1 start position
     { 15, 14 }, // Enemy 2
-    { 14, 15 }, // Enemy 3
-    { 15, 15 }  // Enemy 4
+    { 14, 16 }, // Enemy 3
+    { 15, 16 }  // Enemy 4
   };
 
   Enemy enemies[4];
   for (int i = 0; i < 4; i++) {
-    enemies[i] = Enemy(initialPos[i]);
+    enemies[i].pos = initialPos[i];
+    enemies[i].color = static_cast<Colors>(i + 2); // Assign different colors
+    printEnemy(game_scr, enemies[i]);
   }
+  printPacman(game_scr, pac);
 
-  wtimeout(game_scr, 1000 / (10 * pac.speed));
+  tick = 0;
+  score = 0;
+  wtimeout(game_scr, TIMEOUT);
   int key;
   do {
+
+    // increment tick
+    tick++;
+
     // print and update pacman every tick
     tickPacman(game_scr, pac);
+
+    // print score, lives
+    printScore(game_scr);
+    printLives(game_scr, lives);
 
     key = wgetch(game_scr);
     pacmanInput(pac.dir, key);
 
     for (int i = 0; i < 4; i++) {
       tickEnemy(game_scr, enemies[i]);
-      enemies[i].color = static_cast<Colors>(i + 2); // Assign different colors
-      enemies[i].dir = Up;
     }
 
-    printPacman(game_scr, pac);
-
-    for (int i = 0; i < 4; i++) {
-      printEnemy(game_scr, enemies[i]);
+    if (pacmanDead) {
+      mvwprintw(game_scr, pac.pos.y, pac.pos.x, " ");
+      pac.pos = pacmanStart;
+      for (int i = 0; i < 4; i++) {
+        wmove(game_scr, enemies[i].pos.y, enemies[i].pos.x);
+        wprintw(game_scr, " ");
+        enemies[i].pos = initialPos[i];
+      }
+      pacmanDead = false;
     }
 
-    wrefresh(game_scr);
+    // reset tick back to 0 to avoid variable overflow
+    if (tick == 60)
+      tick = 0;
 
-  } while (key != ESC);
+  } while (lives > 0 && key != ESC);
   napms(150);
   delwin(game_scr);
   clear();
