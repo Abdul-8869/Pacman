@@ -989,21 +989,21 @@ void startGame() {
   refresh();
 
   buildMap(game_scr);
-  const Position pacmanStart = { 3, 2 };
-  Pacman pac(pacmanStart);
-
-  const Position initialPos[4] = {
-    { 14, 14 }, // Enemy 1 start position
+  const Position initialPos[5] = {
+    { 3, 2 },   // pacman
+    { 14, 14 }, // Enemy 1
     { 15, 14 }, // Enemy 2
     { 14, 16 }, // Enemy 3
     { 15, 16 }  // Enemy 4
   };
 
+  Pacman pac(initialPos[0]);
   Enemy enemies[4];
-  for (int i = 0; i < 4; i++) {
-    enemies[i].pos = initialPos[i];
-    enemies[i].color = static_cast<Colors>(i + 2); // Assign different colors
-    printEnemy(game_scr, enemies[i]);
+  for (int i = 1; i < 5; i++) {
+    enemies[i - 1].pos = initialPos[i];
+    enemies[i - 1].color =
+        static_cast<Colors>(i + 3); // Assign different colors
+    printEnemy(game_scr, enemies[i - 1]);
   }
   printPacman(game_scr, pac);
 
@@ -1032,7 +1032,7 @@ void startGame() {
 
     if (pacmanDead) {
       mvwprintw(game_scr, pac.pos.y, pac.pos.x, " ");
-      pac.pos = pacmanStart;
+      pac.pos = initialPos[0];
       for (int i = 0; i < 4; i++) {
         wmove(game_scr, enemies[i].pos.y, enemies[i].pos.x);
         wprintw(game_scr, " ");
