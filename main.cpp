@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <ctime>
 #include <curses.h>
 #include <iostream>
 #define GAME_HEIGHT 35
@@ -12,7 +13,7 @@ using namespace std;
 enum StartMenu { Start, Exit };
 enum WallElement { TL, HZ, TR, VT, BR, BL };
 enum Direction { Left, Up, Right, Down };
-enum Colors { Yellow = 1, White, Blue };
+enum Colors { Yellow = 1, White, Blue, Cyan, Red, Green, Magenta };
 
 // structures
 struct Position {
@@ -37,10 +38,26 @@ struct Pacman {
         lives(5) {}
 };
 
+struct Enemy {
+  static const char shape = '@';
+  Position pos;
+  Direction dir;
+  unsigned int speed;
+  unsigned short tick;
+  Colors color;
+  bool is_eaten;
+
+  // constructors
+  Enemy() : dir(Up), speed(1), is_eaten(false) {}
+
+  Enemy(Position p) : pos(p), dir(Up), speed(3), is_eaten(false) {}
+};
+
 // function prototypes
 void initCurses();
 void initColors();
 void printPacman(WINDOW *, Pacman);
+void printEnemy(WINDOW *, Enemy);
 void printFood(WINDOW *, const int = 1, Colors = White);
 void printSpace(WINDOW *, const int = 1);
 bool detectWall(WINDOW *, Position);
@@ -67,6 +84,7 @@ const wchar_t WallEle[7] = { L'\u250c', L'\u2500', L'\u2510',
 int main() {
   initCurses();
   initColors();
+  srand(time(0));
   if (displayStartMenu() == Exit) {
     endwin();
     return 0;
@@ -126,6 +144,10 @@ void initColors() {
   init_pair(1, COLOR_YELLOW, COLOR_BLACK);
   init_pair(2, COLOR_WHITE, COLOR_BLACK);
   init_pair(3, COLOR_BLUE, COLOR_BLACK);
+  init_pair(4, COLOR_CYAN, COLOR_BLACK);
+  init_pair(5, COLOR_RED, COLOR_BLACK);
+  init_pair(6, COLOR_GREEN, COLOR_BLACK);
+  init_pair(7, COLOR_MAGENTA, COLOR_BLACK);
 }
 
 void printPacman(WINDOW *win, Pacman pac) {
@@ -133,6 +155,12 @@ void printPacman(WINDOW *win, Pacman pac) {
   mvwprintw(win, pac.pos.y, pac.pos.x, "%lc",
             pacmanStates[pac.dir + 4 * pac.MouthOpen]);
   wattroff(win, COLOR_PAIR(Yellow));
+}
+
+void printEnemy(WINDOW *win, Enemy enem) {
+  wattron(win, COLOR_PAIR(enem.color));
+  mvwprintw(win, enem.pos.y, enem.pos.x, "%lc", enem.shape);
+  wattroff(win, COLOR_PAIR(enem.color));
 }
 
 void printFood(WINDOW *win, const int NumFood, Colors color) {
@@ -228,7 +256,52 @@ void tickPacman(WINDOW *win, Pacman &p) {
   printPacman(win, p);
   wrefresh(win);
 }
+void tickEnemy(WINDOW *win, Enemy &e) {
+  // Update enemy position based on their speed
+  if (++e.tick % e.speed == 0) {
+    // Remove enemy from previous position
+    mvwprintw(win, e.pos.y, e.pos.x, " ");
 
+    // Save current position in case move is invalid
+    Position oldPos = e.pos;
+
+    // Randomly decide whether to change direction (1 in 4 chance)
+    if (rand() % 40 == 0) {
+      e.dir = static_cast<Direction>(rand() % 4); // Random new direction
+    }
+
+    // Try to move in current direction
+    switch (e.dir) {
+    case Left:
+      e.pos.x--;
+      break;
+    case Up:
+      e.pos.y--;
+      break;
+    case Right:
+      e.pos.x++;
+      break;
+    case Down:
+      e.pos.y++;
+      break;
+    }
+
+    // If move hits wall, revert position and pick new random direction
+    if (detectWall(win, e.pos)) {
+      e.pos = oldPos;
+      e.dir = static_cast<Direction>(rand() % 4);
+    }
+
+    // Handle tunnel/wrap-around (same as pacman)
+    if (e.pos.x < 0 && e.pos.y == 15) {
+      mvwprintw(win, 15, 0, " ");
+      e.pos.x = GAME_WIDTH - 1;
+    } else if (e.pos.x > GAME_WIDTH - 1 && e.pos.y == 15) {
+      mvwprintw(win, 15, GAME_WIDTH - 1, " ");
+      e.pos.x = 0;
+    }
+  }
+}
 void menuInput(short &highlight, const int key, const int menuItems) {
 
   switch (key) {
@@ -272,7 +345,6 @@ StartMenu displayStartMenu() {
   // set wgetch timeout based on speed in characters per second
   wtimeout(menu_scr, 1000 / (10 * pac.speed));
   box(menu_scr, 0, 0); // draw border
-
   // write Pacman in yellow at the top center of menu
   wattron(menu_scr, COLOR_PAIR(Yellow));
   mvwprintw(menu_scr, 1, menu_width / 2 - centerOffset_x, "Pacman");
@@ -903,6 +975,18 @@ void startGame() {
   const Position pacmanStart = { 3, 2 };
   Pacman pac(pacmanStart);
 
+  const Position initialPos[4] = {
+    { 14, 14 }, // Enemy 1 start position
+    { 15, 14 }, // Enemy 2
+    { 14, 15 }, // Enemy 3
+    { 15, 15 }  // Enemy 4
+  };
+
+  Enemy enemies[4];
+  for (int i = 0; i < 4; i++) {
+    enemies[i] = Enemy(initialPos[i]);
+  }
+
   wtimeout(game_scr, 1000 / (10 * pac.speed));
   int key;
   do {
@@ -911,6 +995,20 @@ void startGame() {
 
     key = wgetch(game_scr);
     pacmanInput(pac.dir, key);
+
+    for (int i = 0; i < 4; i++) {
+      tickEnemy(game_scr, enemies[i]);
+      enemies[i].color = static_cast<Colors>(i + 2); // Assign different colors
+      enemies[i].dir = Up;
+    }
+
+    printPacman(game_scr, pac);
+
+    for (int i = 0; i < 4; i++) {
+      printEnemy(game_scr, enemies[i]);
+    }
+
+    wrefresh(game_scr);
 
   } while (key != ESC);
   napms(150);
