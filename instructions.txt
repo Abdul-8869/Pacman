@@ -64,7 +64,7 @@ This project can also run on Android using a terminal application.
 
 Step 1) Install Termux
 This guide uses Termux for terminal, that can be installed from F-Droid.
-Although it is also available in Play Store, it is depreceated. The official
+Although it is also available in Play Store, it is deprecated. The official
 documentation advises against it. 
 
 Step 2) Setup proot-distro with Arch Linux
