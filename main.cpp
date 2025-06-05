@@ -130,18 +130,18 @@ void initCurses() {
     exit(2);
   }
 
+  menu_width = term_width * 2 / 3;
+  menu_height = term_height / 2;
+}
+
+void initColors() {
+
   // check if colors are supported
   if (!has_colors()) {
     endwin();
     cout << "Error: Terminal does not support colors.\n";
     exit(3);
   }
-
-  menu_width = term_width * 2 / 3;
-  menu_height = term_height / 2;
-}
-
-void initColors() {
 
   // start colors
   start_color();
