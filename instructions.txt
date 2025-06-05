@@ -1,0 +1,123 @@
+Guide for setting up Ncurses on various Operating Systems
+and compiling the code
+
+1) Windows
+
+There are two ways for setting up Ncurses on Windows.
+
+The first is by downloading the Windows implementation of Ncurses
+PDCurses from SourceForge and building it for MinGW. This can
+become complicated and requires delicate handeling of versions
+of compiler and PDCurses for compatability. 
+
+The second is using external tools like WSL, Msys32, or Cygwin. In
+this guide WSL is recommended. In this guide WSL Arch is instead of 
+Debian or Ubuntu because of the package manager of Arch. Although Arch
+is not available on MS Store officially, but there is unofficial alternatives.
+Namely, Winch WSL.
+
+To install WSL follow these steps:
+1) run wsl --install on PowerShell as administrator.
+   WSL needs virtualization to be enabled from
+   the bios menu to work.
+2) Go to Microsoft Store and Install Winch WSL
+3) Run Winch WSL
+4) After Arch is installed successfully you will be asked
+   to input your username and root password.
+5) Now copy these commands and paste it in terminal:
+    pacman -Syu
+    pacman -S base-devel ncurses git
+    git clone https://github.com/Abdul-8869/Pacman.git
+    cd Pacman
+
+6) Setup locale for Unicode support:
+    echo "export LANG=en_IN.UTF-8" >> ~/.bashrc
+    nano /etc/locale.gen
+
+Locate en_IN.UTF-8 in this file and uncomment it by 
+    removing # from the start. Save and quit by pressing 
+    Ctrl + S and Ctrl + X.
+Now, run command:
+    locale-gen
+    echo "LANG=en_IN.UTF-8" > /etc/locale.conf
+    source ~/.bashrc
+
+7) Compile Code
+    make
+
+6) If everything worked correctly, the code should be compiled
+   with binary file main. Zoom out by pressing Ctrl + Minus(-)
+   and run the binary with this command:
+   ./main
+
+   Note: in case there is an error with mirrors, change them like this:
+
+   pacman -S nano --needed # installing text editor 
+   nano /etc/pacman.d/mirrorlist
+
+   add the following line at the top:
+   Server = http://in.mirrors.cicku.me/archlinux/$repo/os/$arch
+
+2) Android
+
+This project can also run on Android using a terminal application.
+
+Step 1) Install Termux
+This guide uses Termux for terminal, that can be installed from F-Droid.
+Although it is also available in Play Store, it is depreceated. The official
+documentation advises against it. 
+
+Step 2) Setup proot-distro with Arch Linux
+After installing Termux, copy and paste
+these commands in Termux:
+
+pkg install proot-distro git
+proot-distro install archlinux
+proot-distro login archlinux
+
+Step 3) Inside proot-distro Arch
+Once inside Arch Linux, the process is exactly the same as previous section
+from step 5 and onwards. Copy these commands and paste them in Termux:
+
+pacman -Syu
+pacman -S base-devel ncurses git
+git clone https://github.com/Abdul-8869/Pacman.git
+cd Pacman
+
+Step 4) Setup Locale
+Follow Step 6 from previous section(Windows).
+
+Step 5) Compile code and run binary
+make
+./main (zoom out if an error occurs)
+
+3) MacOS
+
+Step 1) Open Terminal
+Step 2) Install homebrew (a package manager for MacOS)
+        Run the following command in terminal:
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+Step 3) Install dependencies:
+brew install ncurses make
+
+Step 4) Clone the github repository and compile:
+git clone https://github.com/Abdul-8869/Pacman.git
+cd Pacman
+make
+
+Step 5) Run the binary:
+./main (zoom out in case of error)
+
+4) Linux
+
+Step 1) Open Terminal
+Step 2) Install ncurses and git using your distribution's
+package manager
+Step 3) Clone github repository and compile code:
+git clone https://github.com/Abdul-8869/Pacman.git
+cd Pacman
+make
+
+Step 4) Run the binary:
+./main (zoom out in case of error)
