@@ -1,9 +1,12 @@
+#include "buildMap.h"
 #include <cstdlib>
 #include <ctime>
 #include <curses.h>
 #include <iostream>
+#include <ncurses.h>
 #define GAME_HEIGHT 35
 #define GAME_WIDTH 30
+#define MAX_FOOD 246
 #define TIMEOUT 20
 #define ESC 27
 #define ENTER 10
@@ -12,9 +15,7 @@ using namespace std;
 
 // enumerations
 enum StartMenu { Start, Exit };
-enum WallElement { TL, HZ, TR, VT, BR, BL };
 enum Direction { Left, Up, Right, Down };
-enum Colors { Yellow = 1, White, Blue, Cyan, Red, Green, Magenta };
 
 // structures
 struct Position {
@@ -43,10 +44,9 @@ struct Enemy {
   bool hasEaten; // turns to true when enemy eats food
 
   // constructors
-  Enemy() : dir(Up), speed(10), isEaten(false), hasEaten(false) {}
+  Enemy() : speed(10), isEaten(false), hasEaten(false) {}
 
-  Enemy(Position p)
-      : pos(p), dir(Up), speed(10), isEaten(false), hasEaten(false) {}
+  Enemy(Position p) : pos(p), speed(10), isEaten(false), hasEaten(false) {}
 };
 
 // function prototypes
@@ -54,11 +54,10 @@ void initCurses();
 void initColors();
 void printPacman(WINDOW *, Pacman);
 void printEnemy(WINDOW *, Enemy);
-void printFood(WINDOW *, const int = 1, Colors = White);
-void printSpace(WINDOW *, const int = 1);
+void printEnemies(WINDOW *, Enemy[], const int = 4);
 bool detectWall(WINDOW *, Position);
 bool detectFood(WINDOW *, const Position);
-bool detectEnemy(WINDOW *, const Position);
+bool detectEnemies(WINDOW *, const Position);
 void incScore(WINDOW *, Position);
 void printScore(WINDOW *);
 void printLives(WINDOW *, const unsigned int);
@@ -67,9 +66,8 @@ void tickPacman(WINDOW *, Pacman &);
 void tickEnemy(WINDOW *, Enemy &);
 void menuInput(short &, const int, const int);
 StartMenu displayStartMenu();
-void printWallElement(WINDOW *, WallElement, const int = 1);
-void buildMap(WINDOW *);
 void pacmanInput(Direction &, const int);
+void initPos(WINDOW *, Position &, Position[], bool);
 void startGame();
 
 // global variables
@@ -79,12 +77,11 @@ bool gameStarted = false;
 const wchar_t pacmanStates[8] = { L'\u0254', L'u', L'c', L'n',
                                   L'\u0186', L'U', L'C', L'\u2229' };
 
-const wchar_t WallEle[7] = { L'\u250c', L'\u2500', L'\u2510',
-                             L'\u2502', L'\u2518', L'\u2514' };
 unsigned short tick = 0;
 unsigned int score = 0;
 bool pacmanDead = false;
 unsigned short lives = 3;
+unsigned int foodEatenCount = 0;
 
 int main() {
   initCurses();
@@ -98,6 +95,7 @@ int main() {
   gameStarted = true;
   startGame();
   endwin();
+  cout << "Game Over" << endl;
   cout << "Score: " << score << endl;
   return 0;
 }
@@ -156,29 +154,23 @@ void initColors() {
   init_pair(7, COLOR_MAGENTA, COLOR_BLACK);
 }
 
-void printPacman(WINDOW *win, Pacman pac) {
+void printPacman(WINDOW *win, Pacman p) {
   wattron(win, COLOR_PAIR(Yellow));
-  mvwprintw(win, pac.pos.y, pac.pos.x, "%lc",
-            pacmanStates[pac.dir + 4 * pac.MouthOpen]);
+  mvwprintw(win, p.pos.y, p.pos.x, "%lc",
+            pacmanStates[p.dir + 4 * p.MouthOpen]);
   wattroff(win, COLOR_PAIR(Yellow));
 }
 
-void printEnemy(WINDOW *win, Enemy enem) {
-  wattron(win, COLOR_PAIR(enem.color));
-  mvwprintw(win, enem.pos.y, enem.pos.x, "%c", enem.shape);
-  wattroff(win, COLOR_PAIR(enem.color));
+void printEnemy(WINDOW *win, Enemy e) {
+  wattron(win, COLOR_PAIR(e.color));
+  mvwprintw(win, e.pos.y, e.pos.x, "%c", e.shape);
+  wattroff(win, COLOR_PAIR(e.color));
 }
 
-void printFood(WINDOW *win, const int NumFood, Colors color) {
-  wattron(win, COLOR_PAIR(color));
-  for (int i = 0; i < NumFood; i++)
-    wprintw(win, "\u2022");
-  wattroff(win, COLOR_PAIR(color));
-}
-
-void printSpace(WINDOW *win, const int n) {
-  for (int i = 0; i < n; i++)
-    wprintw(win, " ");
+void printEnemies(WINDOW *win, Enemy enem[], const int SIZE) {
+  for (int i = 0; i < SIZE; i++) {
+    printEnemy(win, enem[i]);
+  }
 }
 
 bool detectWall(WINDOW *win, const Position p) {
@@ -211,9 +203,23 @@ bool detectEnemy(WINDOW *win, const Position p) {
     return false;
 }
 
+bool detectPacman(WINDOW *win, const Position p) {
+  // store wide character at position p in ch_at_p
+  cchar_t ch_at_p;
+  mvwin_wch(win, p.y, p.x, &ch_at_p);
+  // calculate the number of elements in pacmanStates[]
+  const int SIZE = sizeof(pacmanStates) / sizeof(pacmanStates[0]);
+  for (int i = 0; i < SIZE; i++)
+    if (ch_at_p.chars[0] == pacmanStates[i])
+      return true;
+  return false;
+}
+
 void incScore(WINDOW *win, Position p) {
-  if (detectFood(win, p))
+  if (detectFood(win, p)) {
     score += 10;
+    foodEatenCount++;
+  }
 }
 void printScore(WINDOW *win) {
   wmove(win, GAME_HEIGHT - 1, 0);
@@ -265,6 +271,8 @@ void tickPacman(WINDOW *win, Pacman &p) {
       lives--;
       return;
     }
+
+    incScore(win, p.pos);
   }
 
   // wrap pacman in the tunnel
@@ -275,7 +283,6 @@ void tickPacman(WINDOW *win, Pacman &p) {
     mvwprintw(win, 15, GAME_WIDTH - 1, " ");
     p.pos.x = 0;
   }
-  incScore(win, p.pos);
 
   // draw pacman at its current position and refresh screen
   printPacman(win, p);
@@ -303,6 +310,13 @@ void tickEnemy(WINDOW *win, Enemy &e) {
     // if there is a food at the new position, then set hasEaten to true.
     if (detectFood(win, e.pos))
       e.hasEaten = true;
+    else if (detectPacman(win, e.pos)) {
+      pacmanDead = true;
+      napms(1000);
+      lives--;
+      return;
+    }
+
     // handle tunnel/wrap-around
     if (e.pos.x < 0 && e.pos.y == 15) {
       mvwprintw(win, 15, 0, " ");
@@ -405,7 +419,7 @@ StartMenu displayStartMenu() {
   delwin(menu_scr); // free memory of menu's window
   clear();
 
-  return StartMenu(highlight);
+  return static_cast<StartMenu>(highlight);
 }
 
 void pacmanInput(Direction &dir, const int key) {
@@ -433,551 +447,25 @@ void pacmanInput(Direction &dir, const int key) {
   }
 }
 
-// prints wele[WALL] at current cursor position, n number of times. in case no
-// n is provided, it prints only once
-void printWallElement(WINDOW *win, WallElement WALL, const int n) {
-  wattron(win, COLOR_PAIR(Blue));
-  for (int i = 0; i < n; i++)
-    wprintw(win, "%lc", WallEle[WALL]);
-  wattroff(win, COLOR_PAIR(Blue));
-}
+void initPos(WINDOW *win, Pacman &p, Enemy e[4], const Position initialPos[5],
+             bool eraseFromPrevPosFlag) {
+  if (eraseFromPrevPosFlag)
+    mvwprintw(win, p.pos.y, p.pos.x, " ");
+  p.pos = initialPos[0];
+  for (int i = 0; i < 4; i++) {
 
-// build all of the walls
-void buildMap(WINDOW *win) {
-  // row 0
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 28);
-  printWallElement(win, TR);
+    if (eraseFromPrevPosFlag)
+      mvwprintw(win, e[i].pos.y, e[i].pos.x, " ");
 
-  // row 1
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 12);
-  printWallElement(win, TR);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 12);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
+    e[i].pos = initialPos[i + 1];
+    if (i < 2)
+      e[i].dir = Up;
+    else
+      e[i].dir = Down;
 
-  // row 2
-  printWallElement(win, VT, 2);
-  printFood(win, 12);
-  printWallElement(win, VT, 2);
-  printFood(win, 12);
-  printWallElement(win, VT, 2);
-
-  // row 3
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 4
-  printWallElement(win, VT, 2);
-  printFood(win, 1, Yellow);
-  printWallElement(win, VT);
-  printSpace(win, 2);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT);
-  printSpace(win, 3);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT);
-  printSpace(win, 3);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT);
-  printSpace(win, 2);
-  printWallElement(win, VT);
-  printFood(win, 1, Yellow);
-  printWallElement(win, VT, 2);
-
-  // row 5
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 6
-  printWallElement(win, VT, 2);
-  printFood(win, 26);
-  printWallElement(win, VT, 2);
-
-  // row 7
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 6);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 8
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 9
-  printWallElement(win, VT, 2);
-  printFood(win, 6);
-  printWallElement(win, VT, 2);
-  printFood(win, 4);
-  printWallElement(win, VT, 2);
-  printFood(win, 4);
-  printWallElement(win, VT, 2);
-  printFood(win, 6);
-  printWallElement(win, VT, 2);
-
-  // row 10
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printSpace(win);
-  printWallElement(win, VT, 2);
-  printSpace(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-
-  // row 11
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, BR);
-
-  // row 12
-  printSpace(win, 5);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win, 10);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win, 5);
-
-  // row 13
-  printWallElement(win, HZ, 5);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printSpace(win, 2);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printSpace(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 5);
-
-  // row 14
-  printWallElement(win, HZ, 6);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, VT);
-  printSpace(win, 6);
-  printWallElement(win, VT);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 6);
-
-  // row 15
-  printSpace(win, 7);
-  printFood(win);
-  printSpace(win, 3);
-  printWallElement(win, VT);
-  printSpace(win, 6);
-  printWallElement(win, VT);
-  printSpace(win, 3);
-  printFood(win);
-  printSpace(win, 7);
-
-  // row 16
-  printWallElement(win, HZ, 6);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printSpace(win);
-  printWallElement(win, VT);
-  printSpace(win, 6);
-  printWallElement(win, VT);
-  printSpace(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 6);
-
-  // row 17
-  printWallElement(win, HZ, 5);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printSpace(win, 2);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 5);
-
-  // row 18
-  printSpace(win, 5);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win, 10);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win, 5);
-
-  // row 19
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printSpace(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 6);
-  printWallElement(win, TR);
-  printSpace(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, TR);
-
-  // row 20
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printSpace(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-
-  // row 21
-  printWallElement(win, VT, 2);
-  printFood(win, 12);
-  printWallElement(win, VT, 2);
-  printFood(win, 12);
-  printWallElement(win, VT, 2);
-
-  // row 22
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 23
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 3);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 24
-  printWallElement(win, VT, 2);
-  printFood(win, 1, Yellow);
-  printFood(win, 2);
-  printWallElement(win, VT, 2);
-  printFood(win, 16);
-  printWallElement(win, VT, 2);
-  printFood(win, 2);
-  printFood(win, 1, Yellow);
-  printWallElement(win, VT, 2);
-
-  // row 25
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 6);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-
-  // row 26
-  printWallElement(win, VT);
-  printWallElement(win, TL);
-  printWallElement(win, HZ);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ);
-  printWallElement(win, TR);
-  printWallElement(win, VT);
-
-  // row 27
-  printWallElement(win, VT, 2);
-  printFood(win, 6);
-  printWallElement(win, VT, 2);
-  printFood(win, 4);
-  printWallElement(win, VT, 2);
-  printFood(win, 4);
-  printWallElement(win, VT, 2);
-  printFood(win, 6);
-  printWallElement(win, VT, 2);
-
-  // row 28
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, BR);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, TL);
-  printWallElement(win, HZ, 2);
-  printWallElement(win, BR);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 4);
-  printWallElement(win, TR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 29
-  printWallElement(win, VT, 2);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 8);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 8);
-  printWallElement(win, BR);
-  printFood(win);
-  printWallElement(win, VT, 2);
-
-  // row 30
-  printWallElement(win, VT, 2);
-  printFood(win, 26);
-  printWallElement(win, VT, 2);
-
-  // row 31
-  printWallElement(win, VT);
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 26);
-  printWallElement(win, BR);
-  printWallElement(win, VT);
-
-  // row 32
-  printWallElement(win, BL);
-  printWallElement(win, HZ, 28);
-  printWallElement(win, BR);
+    e[i].color =
+        static_cast<Colors>(i + 4); // Assign different colors from index 4 to 7
+  }
 }
 
 void startGame() {
@@ -990,22 +478,18 @@ void startGame() {
 
   buildMap(game_scr);
   const Position initialPos[5] = {
-    { 3, 2 },   // pacman
+    { 15, 24 }, // pacman
     { 14, 14 }, // Enemy 1
     { 15, 14 }, // Enemy 2
     { 14, 16 }, // Enemy 3
     { 15, 16 }  // Enemy 4
   };
 
-  Pacman pac(initialPos[0]);
+  Pacman pac;
   Enemy enemies[4];
-  for (int i = 1; i < 5; i++) {
-    enemies[i - 1].pos = initialPos[i];
-    enemies[i - 1].color =
-        static_cast<Colors>(i + 3); // Assign different colors
-    printEnemy(game_scr, enemies[i - 1]);
-  }
+  initPos(game_scr, pac, enemies, initialPos, false);
   printPacman(game_scr, pac);
+  printEnemies(game_scr, enemies);
 
   tick = 0;
   score = 0;
@@ -1029,22 +513,27 @@ void startGame() {
     for (int i = 0; i < 4; i++) {
       tickEnemy(game_scr, enemies[i]);
     }
-
+    // restart map if pacman is dead
     if (pacmanDead) {
-      mvwprintw(game_scr, pac.pos.y, pac.pos.x, " ");
-      pac.pos = initialPos[0];
-      for (int i = 0; i < 4; i++) {
-        wmove(game_scr, enemies[i].pos.y, enemies[i].pos.x);
-        wprintw(game_scr, " ");
-        enemies[i].pos = initialPos[i];
-      }
+      napms(1000);
+      initPos(game_scr, pac, enemies, initialPos, true);
       pacmanDead = false;
+    }
+
+    // restart if all of the food is eaten
+    else if (foodEatenCount == MAX_FOOD) {
+      napms(1000);
+      werase(game_scr);
+      buildMap(game_scr);
+      initPos(game_scr, pac, enemies, initialPos, true);
+      foodEatenCount = 0;
+      enemies[0].speed--; // increase speed
+      wrefresh(game_scr);
     }
 
     // reset tick back to 0 to avoid variable overflow
     if (tick == 60)
       tick = 0;
-
   } while (lives > 0 && key != ESC);
   napms(150);
   delwin(game_scr);
