@@ -361,7 +361,8 @@ StartMenu displayStartMenu() {
   const short SIZE = sizeof(choices) / sizeof(choices[0]);
   const short centerOffset_x = 3;
   // initial position of pacman
-  const Position pacStart = {menu_width / 2 - centerOffset_x, menu_height - 2};
+  const Position pacStart = {menu_width / 2 - 7 - centerOffset_x,
+                             menu_height - 2};
   const int foodNum = 19; // number of food
   short highlight = 0;
 
