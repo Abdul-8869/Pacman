@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.28)
 project(Pacman LANGUAGES CXX)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(NCURSES REQUIRED IMPORTED_TARGET ncurses)
+
+pkg_check_modules(NCURSES IMPORTED_TARGET ncursesw)
+if(NOT NCURSES_FOUND)
+    pkg_check_modules(NCURSES REQUIRED IMPORTED_TARGET ncurses)
+endif()
 
 add_executable(main src/main.cpp)
 
