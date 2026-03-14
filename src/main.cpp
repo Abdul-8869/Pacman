@@ -1,7 +1,6 @@
-#include "buildMap.h"
+#include "buildMap.hpp"
 #include <cstdlib>
 #include <ctime>
-#include <curses.h>
 #include <iostream>
 #include <ncurses.h>
 #define GAME_HEIGHT 35
@@ -74,8 +73,8 @@ void startGame();
 // term is short for terminal
 int term_width, term_height, menu_width, menu_height;
 bool gameStarted = false;
-const wchar_t pacmanStates[8] = { L'\u0254', L'u', L'c', L'n',
-                                  L'\u0186', L'U', L'C', L'\u2229' };
+const wchar_t pacmanStates[8] = {L'\u0254', L'u', L'c', L'n',
+                                 L'\u0186', L'U', L'C', L'\u2229'};
 
 unsigned short tick = 0;
 unsigned int score = 0;
@@ -358,12 +357,11 @@ StartMenu displayStartMenu() {
   keypad(menu_scr, true);
   refresh(); // update standard screen
 
-  string choices[] = { "Start", "Exit" };
+  string choices[] = {"Start", "Exit"};
   const short SIZE = sizeof(choices) / sizeof(choices[0]);
   const short centerOffset_x = 3;
   // initial position of pacman
-  const Position pacStart = { menu_width / 2 - 7 - centerOffset_x,
-                              menu_height - 2 };
+  const Position pacStart = {menu_width / 2 - centerOffset_x, menu_height - 2};
   const int foodNum = 19; // number of food
   short highlight = 0;
 
@@ -478,11 +476,11 @@ void startGame() {
 
   buildMap(game_scr);
   const Position initialPos[5] = {
-    { 15, 24 }, // pacman
-    { 14, 14 }, // Enemy 1
-    { 15, 14 }, // Enemy 2
-    { 14, 16 }, // Enemy 3
-    { 15, 16 }  // Enemy 4
+      {15, 24}, // pacman
+      {14, 14}, // Enemy 1
+      {15, 14}, // Enemy 2
+      {14, 16}, // Enemy 3
+      {15, 16}  // Enemy 4
   };
 
   Pacman pac;
